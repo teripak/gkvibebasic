@@ -143,8 +143,8 @@
                     </div>
                 </div>
                 <div class="chat-input-container">
-                    <input type="text" class="chat-input" placeholder="메시지를 입력하세요...">
-                    <button class="send-btn">전송</button>
+                    <input type="text" class="chat-input" id="chatInput" placeholder="메시지를 입력하세요..." onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" onclick="sendMessage()">전송</button>
                 </div>
             </div>
         </div>
@@ -261,6 +261,198 @@ function adjustCenterPanel() {
     } else {
         centerPanel.style.width = '50%';
     }
+}
+
+// 채팅 관련 함수들
+let isLoading = false;
+
+function handleKeyPress(event) {
+    if (event.key === 'Enter' && !isLoading) {
+        sendMessage();
+    }
+}
+
+function sendMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const message = chatInput.value.trim();
+    
+    if (!message || isLoading) {
+        return;
+    }
+    
+    // 입력 필드 비우기
+    chatInput.value = '';
+    
+    // 사용자 메시지 추가
+    addMessageToChat(message, 'user');
+    
+    // 로딩 상태 설정
+    isLoading = true;
+    updateSendButton(true);
+    
+    // 로딩 애니메이션 추가
+    addLoadingMessage();
+    
+    // API 호출
+    fetch('/api/send-chat-message/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            message: message
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 로딩 메시지 제거
+        removeLoadingMessage();
+        
+        if (data.success) {
+            // AI 응답 추가
+            addMessageToChat(data.message, 'ai');
+        } else {
+            // 오류 메시지 표시
+            addMessageToChat('오류: ' + data.message, 'ai', true);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        // 로딩 메시지 제거
+        removeLoadingMessage();
+        addMessageToChat('서버 오류가 발생했습니다.', 'ai', true);
+    })
+    .finally(() => {
+        isLoading = false;
+        updateSendButton(false);
+        chatInput.focus();
+    });
+}
+
+function addMessageToChat(content, sender, isError = false) {
+    const chatMessages = document.querySelector('.chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    if (isError) {
+        messageDiv.style.color = '#ff6b6b';
+    }
+    
+    if (sender === 'user') {
+        messageDiv.innerHTML = `
+            <div class="message-content">${escapeHtml(content)}</div>
+            <div class="message-avatar">👤</div>
+        `;
+    } else {
+        messageDiv.innerHTML = `
+            <div class="message-avatar">🤖</div>
+            <div class="message-content">${escapeHtml(content)}</div>
+        `;
+    }
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addLoadingMessage() {
+    const chatMessages = document.querySelector('.chat-messages');
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message ai-message';
+    loadingDiv.id = 'loading-message';
+    
+    loadingDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="loading-message">
+            <span>AI가 답변을 준비하고 있습니다</span>
+            <div class="typing-indicator">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(loadingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeLoadingMessage() {
+    const loadingMessage = document.getElementById('loading-message');
+    if (loadingMessage) {
+        loadingMessage.remove();
+    }
+}
+
+function updateSendButton(loading) {
+    const sendBtn = document.querySelector('.send-btn');
+    if (loading) {
+        sendBtn.textContent = '전송중...';
+        sendBtn.disabled = true;
+    } else {
+        sendBtn.textContent = '전송';
+        sendBtn.disabled = false;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 페이지 로드 시 채팅 이력 불러오기
+document.addEventListener('DOMContentLoaded', function() {
+    loadChatHistory();
+    loadCurrentLLM();
+});
+
+function loadChatHistory() {
+    fetch('/api/get-chat-history/')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.messages.length > 0) {
+            const chatMessages = document.querySelector('.chat-messages');
+            chatMessages.innerHTML = ''; // 기존 메시지 제거
+            
+            // 메시지를 시간순으로 정렬 (오래된 것부터)
+            data.messages.reverse().forEach(message => {
+                addMessageToChat(message.req_content, 'user');
+                addMessageToChat(message.res_content, 'ai');
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error loading chat history:', error);
+    });
+}
+
+function loadCurrentLLM() {
+    fetch('/api/get-current-llm/')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Current LLM:', data.model.name);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading current LLM:', error);
+    });
 }
 </script>
 

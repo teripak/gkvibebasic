@@ -83,3 +83,20 @@ class UserSetting(models.Model):
         if self.ask_settings:
             return self.ask_settings
         return {}
+
+
+class ChatMessage(models.Model):
+    """채팅 메시지를 저장하는 모델"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='사용자')
+    req_content = models.TextField(verbose_name='요청 내용')
+    res_content = models.TextField(verbose_name='응답 내용')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일')
+    
+    class Meta:
+        verbose_name = '채팅 메시지'
+        verbose_name_plural = '채팅 메시지들'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f'{self.user.username} - {self.req_content[:50]}...'

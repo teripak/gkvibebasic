@@ -5,7 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_http_methods
 import json
-from .models import LLMList, UserSetting
+from .models import LLMList, UserSetting, ChatMessage
+from .llm_service import LLMService
 
 # Create your views here.
 
@@ -93,5 +94,95 @@ def get_upload_settings(request):
         
     except UserSetting.DoesNotExist:
         return JsonResponse({'success': True, 'settings': {}})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def send_chat_message(request):
+    """채팅 메시지 전송 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return JsonResponse({'success': False, 'message': '메시지를 입력해주세요.'}, status=400)
+        
+        # LLM 서비스 초기화 및 메시지 전송
+        llm_service = LLMService(request.user)
+        response = llm_service.send_message(message)
+        
+        # 채팅 메시지 저장
+        chat_message = ChatMessage.objects.create(
+            user=request.user,
+            req_content=message,
+            res_content=response
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': response,
+            'message_id': chat_message.id,
+            'created_at': chat_message.created_at.isoformat()
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': '잘못된 JSON 형식입니다.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+
+@require_http_methods(["GET"])
+def get_chat_history(request):
+    """채팅 이력 조회 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        # 최근 50개 메시지만 가져오기
+        messages = ChatMessage.objects.filter(user=request.user).order_by('-created_at')[:50]
+        
+        chat_data = []
+        for message in messages:
+            chat_data.append({
+                'id': message.id,
+                'req_content': message.req_content,
+                'res_content': message.res_content,
+                'created_at': message.created_at.isoformat()
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'messages': chat_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+
+@require_http_methods(["GET"])
+def get_current_llm(request):
+    """현재 선택된 LLM 정보 조회 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        llm_service = LLMService(request.user)
+        current_model = llm_service.get_current_model()
+        
+        return JsonResponse({
+            'success': True,
+            'model': {
+                'id': current_model.id,
+                'name': current_model.name,
+                'model_type': current_model.model_type,
+                'model_provider': current_model.model_provider
+            }
+        })
+        
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)

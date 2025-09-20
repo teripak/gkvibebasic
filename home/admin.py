@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
-from .models import Document, LLMList, UserSetting
+from .models import Document, LLMList, UserSetting, ChatMessage
 
 # Register your models here.
 
@@ -155,3 +155,38 @@ class UserSettingAdmin(admin.ModelAdmin):
                 return str(obj.ask_settings)
         return '설정 없음'
     ask_settings_preview.short_description = '질문 설정 미리보기'
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'req_content_preview', 'res_content_preview', 'created_at']
+    list_filter = ['created_at', 'user']
+    search_fields = ['user__username', 'req_content', 'res_content']
+    ordering = ['-created_at']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('user',)
+        }),
+        ('메시지 내용', {
+            'fields': ('req_content', 'res_content')
+        }),
+        ('시간 정보', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def req_content_preview(self, obj):
+        """요청 내용 미리보기"""
+        if len(obj.req_content) > 50:
+            return obj.req_content[:50] + '...'
+        return obj.req_content
+    req_content_preview.short_description = '요청 내용'
+    
+    def res_content_preview(self, obj):
+        """응답 내용 미리보기"""
+        if len(obj.res_content) > 50:
+            return obj.res_content[:50] + '...'
+        return obj.res_content
+    res_content_preview.short_description = '응답 내용'
