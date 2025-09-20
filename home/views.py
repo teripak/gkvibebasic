@@ -1,23 +1,56 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate, login, logout
+from django.contrib import messages
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_http_methods
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 import json
-from .models import LLMList, UserSetting, ChatMessage
+import os
+from .models import LLMList, UserSetting, ChatMessage, Document
 from .llm_service import LLMService
 
 # Create your views here.
 
+def login_view(request):
+    """로그인 뷰"""
+    if request.user.is_authenticated:
+        return redirect('home:index')
+    
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return redirect('home:index')
+        else:
+            messages.error(request, '사용자명 또는 비밀번호가 올바르지 않습니다.')
+    
+    return render(request, 'home/login.html')
+
+def logout_view(request):
+    """로그아웃 뷰"""
+    logout(request)
+    return redirect('home:login')
+
+@login_required
 def index(request):
-    """메인 홈페이지 뷰"""
+    """메인 홈페이지 뷰 - 로그인한 사용자만 접근 가능"""
     # LLM 목록을 가져와서 템플릿에 전달
     llm_list = LLMList.objects.all().order_by('name')
+    
+    # 사용자의 문서 목록 가져오기 (최신순)
+    user_documents = Document.objects.filter(user=request.user).order_by('-created_at')
     
     context = {
         'title': '홈',
         'llm_list': llm_list,
+        'user_documents': user_documents,
     }
     return render(request, 'home/index.html', context)
 
@@ -184,5 +217,149 @@ def get_current_llm(request):
             }
         })
         
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def upload_document(request):
+    """문서 업로드 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        if 'file' not in request.FILES:
+            return JsonResponse({'success': False, 'message': '파일이 선택되지 않았습니다.'}, status=400)
+        
+        file = request.FILES['file']
+        
+        # 파일 크기 제한 (10MB)
+        if file.size > 10 * 1024 * 1024:
+            return JsonResponse({'success': False, 'message': '파일 크기는 10MB를 초과할 수 없습니다.'}, status=400)
+        
+        # 허용된 파일 확장자
+        allowed_extensions = ['.pdf', '.doc', '.docx', '.txt', '.png', '.jpg', '.jpeg']
+        file_extension = os.path.splitext(file.name)[1].lower()
+        
+        if file_extension not in allowed_extensions:
+            return JsonResponse({'success': False, 'message': '지원되지 않는 파일 형식입니다.'}, status=400)
+        
+        # 사용자 설정에서 기본값 가져오기
+        try:
+            user_setting = UserSetting.objects.get(user=request.user)
+            settings = user_setting.get_upload_settings()
+            prompt_text = settings.get('prompt_text', '')
+            selected_llm_id = settings.get('selected_llm')
+            chunk_size = settings.get('chunk_size', 1000)
+            chunk_overlap = settings.get('chunk_overlap', 200)
+        except UserSetting.DoesNotExist:
+            prompt_text = ''
+            selected_llm_id = None
+            chunk_size = 1000
+            chunk_overlap = 200
+        
+        # LLM 모델 가져오기
+        selected_llm = None
+        if selected_llm_id:
+            try:
+                selected_llm = LLMList.objects.get(id=selected_llm_id)
+            except LLMList.DoesNotExist:
+                pass
+        
+        # Document 객체 생성
+        document = Document.objects.create(
+            user=request.user,
+            file=file,
+            prompt_text=prompt_text,
+            selected_llm=selected_llm,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': '문서가 성공적으로 업로드되었습니다.',
+            'document': {
+                'id': document.id,
+                'filename': os.path.basename(document.file.name),
+                'created_at': document.created_at.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+@require_http_methods(["GET"])
+def get_user_documents(request):
+    """사용자 문서 목록 조회 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        documents = Document.objects.filter(user=request.user).order_by('-created_at')
+        
+        document_list = []
+        for doc in documents:
+            document_list.append({
+                'id': doc.id,
+                'filename': os.path.basename(doc.file.name),
+                'created_at': doc.created_at.isoformat(),
+                'file_url': doc.file.url
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'documents': document_list
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def delete_documents(request):
+    """문서 삭제 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        document_ids = data.get('document_ids', [])
+        
+        if not document_ids:
+            return JsonResponse({'success': False, 'message': '삭제할 문서를 선택해주세요.'}, status=400)
+        
+        # 사용자의 문서만 삭제 가능하도록 필터링
+        documents = Document.objects.filter(user=request.user, id__in=document_ids)
+        
+        if not documents.exists():
+            return JsonResponse({'success': False, 'message': '삭제할 문서를 찾을 수 없습니다.'}, status=404)
+        
+        deleted_count = 0
+        deleted_files = []
+        
+        for document in documents:
+            # 물리적 파일 삭제
+            if document.file and document.file.name:
+                try:
+                    if os.path.isfile(document.file.path):
+                        os.remove(document.file.path)
+                        deleted_files.append(document.file.name)
+                except Exception as e:
+                    print(f"파일 삭제 오류: {e}")
+            
+            # DB에서 문서 삭제
+            document.delete()
+            deleted_count += 1
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{deleted_count}개의 문서가 삭제되었습니다.',
+            'deleted_count': deleted_count,
+            'deleted_files': deleted_files
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': '잘못된 JSON 형식입니다.'}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)

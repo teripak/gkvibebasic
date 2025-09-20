@@ -37,10 +37,14 @@ class LLMList(models.Model):
         return f'{self.name} ({self.get_model_type_display()})'
 
 
+def user_directory_path(instance, filename):
+    """사용자별 파일 저장 경로 생성"""
+    return f'Document/{instance.user.username}/{filename}'
+
 class Document(models.Model):
     """문서 업로드 및 저장을 위한 모델"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='사용자')
-    file = models.FileField(upload_to='documents/%Y/%m/%d/', verbose_name='파일')
+    file = models.FileField(upload_to=user_directory_path, verbose_name='파일')
     prompt_text = models.TextField(verbose_name='프롬프트 텍스트')
     selected_llm = models.ForeignKey(LLMList, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='선택된 LLM 모델')
     chunk_size = models.IntegerField(default=1000, verbose_name='청크 글자수')

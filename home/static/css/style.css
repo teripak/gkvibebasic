@@ -370,6 +370,17 @@ body {
     background-color: #222222;
 }
 
+.no-files {
+    text-align: center;
+    padding: 2rem;
+    color: #666666;
+}
+
+.no-files p {
+    margin: 0;
+    font-style: italic;
+}
+
 .status-indicator {
     width: 8px;
     height: 8px;
