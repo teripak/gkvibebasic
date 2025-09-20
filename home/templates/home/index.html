@@ -1,0 +1,314 @@
+{% extends 'home/base.html' %}
+
+{% block title %}홈 - 내가 만드는 나만의 AI 에이전트{% endblock %}
+
+{% block content %}
+<div class="main-layout">
+    <!-- 왼쪽 영역 (1번창) - 문서 -->
+    <aside class="left-panel" id="leftPanel">
+        <div class="panel-header">
+            <h3>📄 문서</h3>
+            <button class="toggle-btn" onclick="togglePanel('left')" id="leftToggleBtn" title="숨기기">
+                <span class="icon">‹</span>
+            </button>
+        </div>
+        <div class="panel-content">
+            <!-- 파일 선택 영역 -->
+            <div class="file-select-area">
+                <div class="file-input-container">
+                    <input type="file" id="fileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="display: none;">
+                    <label for="fileInput" class="file-input-label">
+                        <span class="file-input-text">파일 선택</span>
+                    </label>
+                    <button class="upload-btn" onclick="uploadFiles()">
+                        <span class="upload-icon">↑</span>
+                    </button>
+                    <label class="background-checkbox">
+                        <input type="checkbox" id="backgroundUpload">
+                        <span class="checkbox-text">백그라운드</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 파일 목록 영역 -->
+            <div class="file-list-area">
+                <!-- 목록 헤더 -->
+                <div class="list-header">
+                    <div class="list-header-left">
+                        <span class="list-title">파일명</span>
+                    </div>
+                    <div class="list-header-right">
+                        <button class="header-btn settings-btn" title="설정">
+                            <span class="icon">⚙</span>
+                        </button>
+                        <button class="header-btn delete-btn" title="삭제">
+                            <span class="icon">🗑</span>
+                        </button>
+                        <button class="header-btn reload-btn" title="새로고침" onclick="reloadFileList()">
+                            <span class="icon">↻</span>
+                        </button>
+                        <input type="checkbox" class="select-all-checkbox" title="전체 선택">
+                    </div>
+                </div>
+
+                <!-- 목록 본문 -->
+                <div class="list-body" id="fileListBody">
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">docvqa_temp_1.png</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">docvqa_temp_2.png</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">디지털시민교육메타버스플랫폼발표자료(1-4)_85.pdf</div>
+                        <input type="checkbox" class="file-checkbox" checked>
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">디지털시민교육메타버스플랫폼발표자료(1-4)_86.pdf</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">docvqa_temp_3.png</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">디지털시민교육메타버스플랫폼발표자료(1-4)_87.pdf</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">docvqa_temp_4.png</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">디지털시민교육메타버스플랫폼발표자료(1-4)_88.pdf</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">docvqa_temp_5.png</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                    <div class="file-item">
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">디지털시민교육메타버스플랫폼발표자료(1-4)_89.pdf</div>
+                        <input type="checkbox" class="file-checkbox">
+                    </div>
+                </div>
+
+                <!-- 페이지네이션 -->
+                <div class="pagination-area">
+                    <div class="pagination">
+                        <button class="page-btn active">1</button>
+                        <button class="page-btn">2</button>
+                        <button class="page-btn">3</button>
+                        <button class="page-btn">4</button>
+                        <button class="page-btn">5</button>
+                        <button class="page-btn nav-btn">»</button>
+                        <button class="page-btn nav-btn">»»</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 중간 영역 (2번창) - 채팅 -->
+    <main class="center-panel" id="centerPanel">
+        <div class="panel-header">
+            <h3>💬 채팅</h3>
+        </div>
+        <div class="panel-content">
+            <div class="chat-container">
+                <div class="chat-messages">
+                    <div class="message ai-message">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            안녕하세요! AI 에이전트입니다. 무엇을 도와드릴까요?
+                        </div>
+                    </div>
+                    <div class="message user-message">
+                        <div class="message-content">
+                            안녕하세요! 문서 분석을 도와주세요.
+                        </div>
+                        <div class="message-avatar">👤</div>
+                    </div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" placeholder="메시지를 입력하세요...">
+                    <button class="send-btn">전송</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 오른쪽 영역 (3번창) - 근거 -->
+    <aside class="right-panel" id="rightPanel">
+        <div class="panel-header">
+            <h3>🔍 근거</h3>
+            <button class="toggle-btn" onclick="togglePanel('right')" id="rightToggleBtn" title="숨기기">
+                <span class="icon">›</span>
+            </button>
+        </div>
+        <div class="panel-content">
+            <div class="evidence-list">
+                <h4>참조 근거</h4>
+                <div class="evidence-item">
+                    <div class="evidence-source">문서 1 - 페이지 3</div>
+                    <div class="evidence-text">관련 내용이 여기에 표시됩니다...</div>
+                </div>
+                <div class="evidence-item">
+                    <div class="evidence-source">문서 2 - 페이지 1</div>
+                    <div class="evidence-text">추가 참조 정보가 표시됩니다...</div>
+                </div>
+                <div class="evidence-item">
+                    <div class="evidence-source">문서 3 - 페이지 5</div>
+                    <div class="evidence-text">더 많은 근거 자료가 있습니다...</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function togglePanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel.classList.contains('panel-hidden')) {
+        showPanel(side);
+    } else {
+        hidePanel(side);
+    }
+}
+
+function hidePanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel && toggleBtn) {
+        // 패널을 숨김 상태로 설정
+        panel.classList.add('panel-hidden');
+        
+        // 토글 버튼 아이콘과 툴팁 변경
+        const icon = toggleBtn.querySelector('.icon');
+        if (side === 'left') {
+            icon.textContent = '›';
+            toggleBtn.title = '보이기';
+        } else {
+            icon.textContent = '‹';
+            toggleBtn.title = '보이기';
+        }
+        
+        // 로컬 스토리지에 상태 저장
+        localStorage.setItem(side + 'PanelHidden', 'true');
+        
+        // 중간 패널 크기 조정
+        adjustCenterPanel();
+    }
+}
+
+function showPanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel && toggleBtn) {
+        // 패널을 보이게 함
+        panel.classList.remove('panel-hidden');
+        
+        // 토글 버튼 아이콘과 툴팁 변경
+        const icon = toggleBtn.querySelector('.icon');
+        if (side === 'left') {
+            icon.textContent = '‹';
+            toggleBtn.title = '숨기기';
+        } else {
+            icon.textContent = '›';
+            toggleBtn.title = '숨기기';
+        }
+        
+        // 로컬 스토리지에서 상태 제거
+        localStorage.removeItem(side + 'PanelHidden');
+        
+        // 중간 패널 크기 조정
+        adjustCenterPanel();
+    }
+}
+
+function adjustCenterPanel() {
+    const leftPanel = document.getElementById('leftPanel');
+    const rightPanel = document.getElementById('rightPanel');
+    const centerPanel = document.getElementById('centerPanel');
+    
+    if (!leftPanel || !rightPanel || !centerPanel) return;
+    
+    const leftHidden = leftPanel.classList.contains('panel-hidden');
+    const rightHidden = rightPanel.classList.contains('panel-hidden');
+    
+    if (leftHidden && rightHidden) {
+        centerPanel.style.width = '100%';
+    } else if (leftHidden || rightHidden) {
+        centerPanel.style.width = '75%';
+    } else {
+        centerPanel.style.width = '50%';
+    }
+}
+</script>
+
+<!-- 설정 모달 -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>문서 업로드 설정</h3>
+            <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="uploadSettingsForm">
+                <!-- LLM 선택 -->
+                <div class="form-group">
+                    <label for="llmSelect">LLM 모델 선택</label>
+                    <select id="llmSelect" name="selected_llm" required>
+                        <option value="">LLM 모델을 선택하세요</option>
+                        {% for llm in llm_list %}
+                        <option value="{{ llm.id }}">{{ llm.name }} ({{ llm.get_model_type_display }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- 텍스트 추출 가이드라인 프롬프트 -->
+                <div class="form-group">
+                    <label for="promptText">텍스트 추출 가이드라인 프롬프트</label>
+                    <textarea id="promptText" name="prompt_text" rows="4" placeholder="문서에서 텍스트를 추출할 때 사용할 프롬프트를 입력하세요..."></textarea>
+                </div>
+
+                <!-- 청킹 설정 -->
+                <div class="form-group">
+                    <label for="chunkSize">청크 글자수</label>
+                    <input type="number" id="chunkSize" name="chunk_size" value="1000" min="100" max="5000" required>
+                    <small class="form-help">문서를 나눌 청크의 글자 수 (100-5000)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="chunkOverlap">청크 겹침 글자수</label>
+                    <input type="number" id="chunkOverlap" name="chunk_overlap" value="200" min="0" max="1000" required>
+                    <small class="form-help">청크 간 겹치는 글자 수 (0-1000)</small>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeSettingsModal()">취소</button>
+            <button type="button" class="btn btn-primary" onclick="saveUploadSettings()">설정 저장</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

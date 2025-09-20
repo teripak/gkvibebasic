@@ -1,0 +1,31 @@
+<header class="header">
+    <div class="header-container">
+        <!-- 왼쪽 메뉴 영역 -->
+        <div class="header-left">
+            <nav class="main-nav">
+                <a href="{% url 'home:index' %}" class="nav-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
+                    Home
+                </a>
+            </nav>
+        </div>
+        
+        <!-- 중앙 로고/타이틀 영역 -->
+        <div class="header-center">
+            <h1 class="site-title">내가 만드는 나만의 AI 에이전트</h1>
+        </div>
+        
+        <!-- 오른쪽 사용자 영역 -->
+        <div class="header-right">
+            {% if user.is_authenticated %}
+                <div class="user-info">
+                    <span class="username">{{ user.username }}</span>
+                    <a href="{% url 'admin:logout' %}" class="logout-btn">로그아웃</a>
+                </div>
+            {% else %}
+                <div class="user-info">
+                    <a href="{% url 'admin:login' %}" class="login-btn">로그인</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</header>
