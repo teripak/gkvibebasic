@@ -13,7 +13,7 @@ class RAGService:
     
     def __init__(self, user):
         self.user = user
-        self.llm_service = LLMService(user)
+        self.llm_service = LLMService(user, use_ask_settings=True)  # 질문 설정 사용
         self.embedding_service = EmbeddingService(user)
     
     def process_document_for_rag(self, document_id: int) -> Dict[str, Any]:
@@ -44,9 +44,19 @@ class RAGService:
         except Exception as e:
             return {'success': False, 'message': f'문서 처리 중 오류 발생: {str(e)}'}
     
-    def search_relevant_chunks(self, query: str, selected_documents: List[int], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_relevant_chunks(self, query: str, selected_documents: List[int], top_k: int = None) -> List[Dict[str, Any]]:
         """선택된 문서들에서 관련 청크들을 검색"""
         try:
+            # 질문 설정에서 검색 청크 개수 가져오기
+            if top_k is None:
+                try:
+                    from .models import UserSetting
+                    user_setting = UserSetting.objects.get(user=self.user)
+                    ask_settings = user_setting.get_ask_settings()
+                    top_k = ask_settings.get('search_chunks', 5)
+                except:
+                    top_k = 5
+            
             # 선택된 문서들 가져오기
             documents = Document.objects.filter(
                 id__in=selected_documents,
@@ -57,11 +67,22 @@ class RAGService:
             if not documents.exists():
                 return []
             
+            # 질문 설정에서 유사도 방식 가져오기
+            similarity_method = 'cosine'  # 기본값
+            try:
+                from .models import UserSetting
+                user_setting = UserSetting.objects.get(user=self.user)
+                ask_settings = user_setting.get_ask_settings()
+                similarity_method = ask_settings.get('similarity_method', 'cosine')
+            except:
+                pass
+            
             # 여러 문서에서 검색
             relevant_chunks = self.embedding_service.search_multiple_documents(
                 query=query,
                 documents=documents,
-                total_top_k=top_k
+                total_top_k=top_k,
+                similarity_method=similarity_method
             )
             
             return relevant_chunks
@@ -93,7 +114,16 @@ class RAGService:
         """RAG 프롬프트 구성"""
         documents_list = "\n".join([f"- {doc}" for doc in selected_documents_info])
         
-        prompt = f"""당신은 주어진 문서들을 기반으로 사용자의 질문에 정확하고 도움이 되는 답변을 제공하는 AI 어시스턴트입니다.
+        # 질문 설정에서 시스템 프롬프트 가져오기
+        try:
+            from .models import UserSetting
+            user_setting = UserSetting.objects.get(user=self.user)
+            ask_settings = user_setting.get_ask_settings()
+            system_prompt = ask_settings.get('system_prompt', '당신은 도움이 되는 AI 어시스턴트입니다. 주어진 문서를 바탕으로 정확하고 유용한 답변을 제공해주세요.')
+        except:
+            system_prompt = '당신은 도움이 되는 AI 어시스턴트입니다. 주어진 문서를 바탕으로 정확하고 유용한 답변을 제공해주세요.'
+        
+        prompt = f"""{system_prompt}
 
 참조 문서들:
 {documents_list}

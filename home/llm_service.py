@@ -10,10 +10,11 @@ from .models import LLMList, UserSetting
 class LLMService:
     """LLM 서비스 클래스"""
     
-    def __init__(self, user):
+    def __init__(self, user, use_ask_settings=False):
         self.user = user
         self.client = None
         self.selected_llm = None
+        self.use_ask_settings = use_ask_settings
         self._setup_client()
     
     def _setup_client(self):
@@ -21,8 +22,15 @@ class LLMService:
         try:
             # 사용자 설정에서 선택된 LLM 가져오기
             user_setting = UserSetting.objects.get(user=self.user)
-            upload_settings = user_setting.get_upload_settings()
-            selected_llm_id = upload_settings.get('selected_llm')
+            
+            if self.use_ask_settings:
+                # 질문 설정 사용
+                ask_settings = user_setting.get_ask_settings()
+                selected_llm_id = ask_settings.get('selected_llm')
+            else:
+                # 업로드 설정 사용
+                upload_settings = user_setting.get_upload_settings()
+                selected_llm_id = upload_settings.get('selected_llm')
             
             if selected_llm_id:
                 self.selected_llm = LLMList.objects.get(id=selected_llm_id)
@@ -59,12 +67,13 @@ class LLMService:
             else:
                 raise Exception("사용자 설정이 없고 기본 LLM 모델도 없습니다.")
     
-    def send_message(self, message):
+    def send_message(self, message, system_prompt=None):
         """
         LLM에 메시지 전송하고 응답 받기
         
         Args:
             message (str): 사용자 메시지
+            system_prompt (str): 시스템 프롬프트 (선택사항)
             
         Returns:
             str: LLM 응답
@@ -76,12 +85,36 @@ class LLMService:
             # 모델명 설정 (GPT-4o 또는 선택된 모델)
             model_name = "gpt-4o"  # GPT-5는 아직 공개되지 않았으므로 GPT-4o 사용
             
+            # 시스템 프롬프트 설정
+            if system_prompt:
+                system_content = system_prompt
+            elif self.use_ask_settings:
+                # 질문 설정에서 시스템 프롬프트 가져오기
+                try:
+                    user_setting = UserSetting.objects.get(user=self.user)
+                    ask_settings = user_setting.get_ask_settings()
+                    system_content = ask_settings.get('system_prompt', '당신은 도움이 되는 AI 어시스턴트입니다. 사용자의 질문에 정확하고 유용한 답변을 제공해주세요.')
+                except:
+                    system_content = "당신은 도움이 되는 AI 어시스턴트입니다. 사용자의 질문에 정확하고 유용한 답변을 제공해주세요."
+            else:
+                system_content = "당신은 도움이 되는 AI 어시스턴트입니다. 사용자의 질문에 정확하고 유용한 답변을 제공해주세요."
+            
+            # Temperature 설정
+            temperature = 0.7  # 기본값
+            if self.use_ask_settings:
+                try:
+                    user_setting = UserSetting.objects.get(user=self.user)
+                    ask_settings = user_setting.get_ask_settings()
+                    temperature = ask_settings.get('temperature', 0.7)
+                except:
+                    pass
+            
             response = self.client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {
                         "role": "system", 
-                        "content": "당신은 도움이 되는 AI 어시스턴트입니다. 사용자의 질문에 정확하고 유용한 답변을 제공해주세요."
+                        "content": system_content
                     },
                     {
                         "role": "user", 
@@ -89,7 +122,7 @@ class LLMService:
                     }
                 ],
                 max_completion_tokens=1000,
-                temperature=0.7
+                temperature=temperature
             )
             
             return response.choices[0].message.content

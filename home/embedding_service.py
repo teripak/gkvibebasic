@@ -84,6 +84,16 @@ class EmbeddingService:
         
         return dot_product / (norm1 * norm2)
     
+    def calculate_l2_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """L2 거리 유사도 계산 (거리가 가까울수록 높은 값)"""
+        vec1 = np.array(vec1)
+        vec2 = np.array(vec2)
+        
+        l2_distance = np.linalg.norm(vec1 - vec2)
+        # 거리를 유사도로 변환 (0~1 범위)
+        similarity = 1.0 / (1.0 + l2_distance)
+        return similarity
+    
     def generate_chunk_embeddings(self, document_chunks: List[DocumentChunk]) -> Dict[int, List[float]]:
         """청크들의 임베딩을 생성"""
         embeddings = {}
@@ -109,7 +119,7 @@ class EmbeddingService:
         
         return embeddings
     
-    def search_similar_chunks(self, query: str, document_chunks: List[DocumentChunk], top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_similar_chunks(self, query: str, document_chunks: List[DocumentChunk], top_k: int = 5, similarity_method: str = 'cosine') -> List[Dict[str, Any]]:
         """유사한 청크들을 검색"""
         try:
             # 쿼리 임베딩 생성
@@ -122,10 +132,17 @@ class EmbeddingService:
             similarities = []
             for chunk in document_chunks:
                 if chunk.id in chunk_embeddings:
-                    similarity = self.calculate_cosine_similarity(
-                        query_embedding, 
-                        chunk_embeddings[chunk.id]
-                    )
+                    if similarity_method == 'l2':
+                        similarity = self.calculate_l2_similarity(
+                            query_embedding, 
+                            chunk_embeddings[chunk.id]
+                        )
+                    else:  # 기본값은 코사인 유사도
+                        similarity = self.calculate_cosine_similarity(
+                            query_embedding, 
+                            chunk_embeddings[chunk.id]
+                        )
+                    
                     similarities.append({
                         'chunk': chunk,
                         'similarity': similarity,
@@ -141,7 +158,7 @@ class EmbeddingService:
         except Exception as e:
             raise Exception(f"유사 청크 검색 중 오류 발생: {str(e)}")
     
-    def search_multiple_documents(self, query: str, documents, top_k_per_doc: int = 3, total_top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_multiple_documents(self, query: str, documents, top_k_per_doc: int = 3, total_top_k: int = 5, similarity_method: str = 'cosine') -> List[Dict[str, Any]]:
         """여러 문서에서 유사한 청크들을 검색"""
         all_results = []
         
@@ -154,7 +171,7 @@ class EmbeddingService:
                     continue
                 
                 # 해당 문서에서 검색
-                doc_results = self.search_similar_chunks(query, list(chunks), top_k_per_doc)
+                doc_results = self.search_similar_chunks(query, list(chunks), top_k_per_doc, similarity_method)
                 
                 # 문서 정보 추가
                 for result in doc_results:

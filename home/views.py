@@ -169,8 +169,8 @@ def send_chat_message(request):
             else:
                 return JsonResponse({'success': False, 'message': result['message']}, status=400)
         else:
-            # 기존 일반 채팅 모드
-            llm_service = LLMService(request.user)
+            # 기존 일반 채팅 모드 (질문 설정 적용)
+            llm_service = LLMService(request.user, use_ask_settings=True)
             response = llm_service.send_message(message)
             
             # 채팅 메시지 저장
@@ -580,5 +580,97 @@ def delete_document_rag_data(request):
         
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'message': '잘못된 JSON 형식입니다.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+
+# 질문 설정 관련 API들
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def save_ask_settings(request):
+    """질문 설정 저장 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # 설정 데이터 검증
+        required_fields = ['selected_llm', 'temperature', 'search_chunks', 'similarity_method', 'system_prompt']
+        for field in required_fields:
+            if field not in data:
+                return JsonResponse({'success': False, 'message': f'{field} 필드가 필요합니다.'}, status=400)
+        
+        # LLM 모델 존재 확인
+        if data['selected_llm']:
+            try:
+                llm = LLMList.objects.get(id=data['selected_llm'])
+            except LLMList.DoesNotExist:
+                return JsonResponse({'success': False, 'message': '선택한 LLM 모델이 존재하지 않습니다.'}, status=400)
+        
+        # Temperature 검증
+        temperature = float(data['temperature'])
+        if temperature < 0 or temperature > 2:
+            return JsonResponse({'success': False, 'message': 'Temperature는 0과 2 사이여야 합니다.'}, status=400)
+        
+        # 검색 청크 개수 검증
+        search_chunks = int(data['search_chunks'])
+        if search_chunks < 1 or search_chunks > 20:
+            return JsonResponse({'success': False, 'message': '검색 청크 개수는 1-20 사이여야 합니다.'}, status=400)
+        
+        # 유사도 방식 검증
+        similarity_method = data['similarity_method']
+        if similarity_method not in ['cosine', 'l2']:
+            return JsonResponse({'success': False, 'message': '유사도 방식은 cosine 또는 l2여야 합니다.'}, status=400)
+        
+        # UserSetting 객체 가져오기 또는 생성
+        user_setting, created = UserSetting.objects.get_or_create(
+            user=request.user,
+            defaults={'upload_settings': {}, 'ask_settings': {}}
+        )
+        
+        # 질문 설정 업데이트
+        user_setting.ask_settings = {
+            'selected_llm': data['selected_llm'],
+            'temperature': temperature,
+            'search_chunks': search_chunks,
+            'similarity_method': similarity_method,
+            'system_prompt': data['system_prompt']
+        }
+        user_setting.save()
+        
+        return JsonResponse({'success': True, 'message': '질문 설정이 저장되었습니다.'})
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': '잘못된 JSON 형식입니다.'}, status=400)
+    except ValueError as e:
+        return JsonResponse({'success': False, 'message': f'잘못된 값: {str(e)}'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)
+
+
+@require_http_methods(["GET"])
+def get_ask_settings(request):
+    """질문 설정 조회 API"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': '로그인이 필요합니다.'}, status=401)
+    
+    try:
+        user_setting = get_object_or_404(UserSetting, user=request.user)
+        settings = user_setting.get_ask_settings()
+        
+        return JsonResponse({'success': True, 'settings': settings})
+        
+    except UserSetting.DoesNotExist:
+        # 기본 설정 반환
+        default_settings = {
+            'selected_llm': '',
+            'temperature': 0.7,
+            'search_chunks': 5,
+            'similarity_method': 'cosine',
+            'system_prompt': '당신은 도움이 되는 AI 어시스턴트입니다. 주어진 문서를 바탕으로 정확하고 유용한 답변을 제공해주세요.'
+        }
+        return JsonResponse({'success': True, 'settings': default_settings})
     except Exception as e:
         return JsonResponse({'success': False, 'message': f'서버 오류: {str(e)}'}, status=500)

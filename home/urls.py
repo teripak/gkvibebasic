@@ -22,4 +22,7 @@ urlpatterns = [
     path('api/update-document-selection/', views.update_document_selection, name='update_document_selection'),
     path('api/get-selected-documents/', views.get_selected_documents, name='get_selected_documents'),
     path('api/delete-document-rag-data/', views.delete_document_rag_data, name='delete_document_rag_data'),
+    # 질문 설정 관련 API들
+    path('api/save-ask-settings/', views.save_ask_settings, name='save_ask_settings'),
+    path('api/get-ask-settings/', views.get_ask_settings, name='get_ask_settings'),
 ]

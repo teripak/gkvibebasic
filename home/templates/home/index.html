@@ -87,6 +87,9 @@
     <main class="center-panel" id="centerPanel">
         <div class="panel-header">
             <h3>💬 채팅</h3>
+            <button class="header-btn ask-settings-btn" title="질문 설정" onclick="openAskSettingsModal()">
+                <span class="icon">⚙</span>
+            </button>
         </div>
         <div class="panel-content">
             <div class="chat-container">
@@ -183,6 +186,64 @@
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeSettingsModal()">취소</button>
             <button type="button" class="btn btn-primary" onclick="saveUploadSettings()">설정 저장</button>
+        </div>
+    </div>
+</div>
+
+<!-- 질문 설정 모달 -->
+<div id="askSettingsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>질문 설정</h3>
+            <button class="modal-close" onclick="closeAskSettingsModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="askSettingsForm">
+                <!-- LLM 선택 -->
+                <div class="form-group">
+                    <label for="askLlmSelect">질문용 LLM 모델 선택</label>
+                    <select id="askLlmSelect" name="selected_llm" required>
+                        <option value="">LLM 모델을 선택하세요</option>
+                        {% for llm in llm_list %}
+                        <option value="{{ llm.id }}">{{ llm.name }} ({{ llm.get_model_type_display }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Temperature 설정 -->
+                <div class="form-group">
+                    <label for="temperature">응답 무작위성 (Temperature)</label>
+                    <input type="number" id="temperature" name="temperature" value="0.7" min="0" max="2" step="0.1" required>
+                    <small class="form-help">0(정확함) ~ 2(창의적) 사이의 값 (기본값: 0.7)</small>
+                </div>
+
+                <!-- 검색 청크 개수 -->
+                <div class="form-group">
+                    <label for="searchChunks">검색에 사용할 청크 개수</label>
+                    <input type="number" id="searchChunks" name="search_chunks" value="5" min="1" max="20" required>
+                    <small class="form-help">검색에 사용할 청크 개수 (1-20, 기본값: 5)</small>
+                </div>
+
+                <!-- 유사도 방식 선택 -->
+                <div class="form-group">
+                    <label for="similarityMethod">유사도 우선순위</label>
+                    <select id="similarityMethod" name="similarity_method" required>
+                        <option value="cosine">코사인 유사도</option>
+                        <option value="l2">L2 거리 유사도</option>
+                    </select>
+                    <small class="form-help">문서 검색 시 사용할 유사도 계산 방식</small>
+                </div>
+
+                <!-- System Prompt -->
+                <div class="form-group">
+                    <label for="systemPrompt">System Prompt</label>
+                    <textarea id="systemPrompt" name="system_prompt" rows="6" placeholder="질문과 함께 LLM에 전달할 System Prompt를 입력하세요...">당신은 도움이 되는 AI 어시스턴트입니다. 주어진 문서를 바탕으로 정확하고 유용한 답변을 제공해주세요.</textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeAskSettingsModal()">취소</button>
+            <button type="button" class="btn btn-primary" onclick="saveAskSettings()">설정 저장</button>
         </div>
     </div>
 </div>
@@ -607,6 +668,92 @@ function saveUploadSettings() {
     })
     .catch(error => {
         console.error('설정 저장 오류:', error);
+        alert('설정 저장 중 오류가 발생했습니다.');
+    });
+}
+
+// 질문 설정 모달 관련 함수들
+function openAskSettingsModal() {
+    document.getElementById('askSettingsModal').style.display = 'block';
+    loadAskSettings();
+}
+
+function closeAskSettingsModal() {
+    document.getElementById('askSettingsModal').style.display = 'none';
+}
+
+function loadAskSettings() {
+    fetch('/api/get-ask-settings/')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const settings = data.settings;
+                if (settings.selected_llm) {
+                    document.getElementById('askLlmSelect').value = settings.selected_llm;
+                }
+                if (settings.temperature !== undefined) {
+                    document.getElementById('temperature').value = settings.temperature;
+                }
+                if (settings.search_chunks) {
+                    document.getElementById('searchChunks').value = settings.search_chunks;
+                }
+                if (settings.similarity_method) {
+                    document.getElementById('similarityMethod').value = settings.similarity_method;
+                }
+                if (settings.system_prompt) {
+                    document.getElementById('systemPrompt').value = settings.system_prompt;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('질문 설정 로드 오류:', error);
+        });
+}
+
+function saveAskSettings() {
+    const formData = {
+        selected_llm: document.getElementById('askLlmSelect').value,
+        temperature: parseFloat(document.getElementById('temperature').value),
+        search_chunks: parseInt(document.getElementById('searchChunks').value),
+        similarity_method: document.getElementById('similarityMethod').value,
+        system_prompt: document.getElementById('systemPrompt').value
+    };
+    
+    // 유효성 검사
+    if (!formData.selected_llm) {
+        alert('질문용 LLM 모델을 선택해주세요.');
+        return;
+    }
+    
+    if (formData.temperature < 0 || formData.temperature > 2) {
+        alert('Temperature는 0과 2 사이의 값이어야 합니다.');
+        return;
+    }
+    
+    if (formData.search_chunks < 1 || formData.search_chunks > 20) {
+        alert('검색 청크 개수는 1과 20 사이의 값이어야 합니다.');
+        return;
+    }
+    
+    fetch('/api/save-ask-settings/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('질문 설정이 저장되었습니다.');
+            closeAskSettingsModal();
+        } else {
+            alert('설정 저장 실패: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('질문 설정 저장 오류:', error);
         alert('설정 저장 중 오류가 발생했습니다.');
     });
 }
