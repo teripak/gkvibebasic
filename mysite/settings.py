@@ -126,3 +126,6 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# OpenAI API 설정
+OPENAI_API_KEY = 'your-openai-api-key-here'  # 실제 API 키로 변경하세요

@@ -55,9 +55,8 @@
                 <div class="list-body" id="fileListBody">
                     {% for document in user_documents %}
                     <div class="file-item" data-document-id="{{ document.id }}">
-                        <div class="status-indicator {% if document.is_processed %}processed{% elif document.processing_status == 'processing' %}processing{% elif document.processing_status == 'failed' %}failed{% else %}pending{% endif %}" 
-                             title="{% if document.is_processed %}처리 완료{% elif document.processing_status == 'processing' %}처리 중...{% elif document.processing_status == 'failed' %}처리 실패{% else %}처리 대기{% endif %}"></div>
-                        <div class="file-name">{{ document.filename }}</div>
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">{{ document.file.name|slice:"Document/"|slice:":-1"|slice:"/"|last }}</div>
                         <input type="checkbox" class="file-checkbox" onchange="updateSelectAllCheckbox()">
                     </div>
                     {% empty %}
@@ -139,6 +138,514 @@
         </div>
     </aside>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function togglePanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel.classList.contains('panel-hidden')) {
+        showPanel(side);
+    } else {
+        hidePanel(side);
+    }
+}
+
+function hidePanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel && toggleBtn) {
+        // 패널을 숨김 상태로 설정
+        panel.classList.add('panel-hidden');
+        
+        // 토글 버튼 아이콘과 툴팁 변경
+        const icon = toggleBtn.querySelector('.icon');
+        if (side === 'left') {
+            icon.textContent = '›';
+            toggleBtn.title = '보이기';
+        } else {
+            icon.textContent = '‹';
+            toggleBtn.title = '보이기';
+        }
+        
+        // 로컬 스토리지에 상태 저장
+        localStorage.setItem(side + 'PanelHidden', 'true');
+        
+        // 중간 패널 크기 조정
+        adjustCenterPanel();
+    }
+}
+
+function showPanel(side) {
+    const panel = document.getElementById(side + 'Panel');
+    const toggleBtn = document.getElementById(side + 'ToggleBtn');
+    
+    if (panel && toggleBtn) {
+        // 패널을 보이게 함
+        panel.classList.remove('panel-hidden');
+        
+        // 토글 버튼 아이콘과 툴팁 변경
+        const icon = toggleBtn.querySelector('.icon');
+        if (side === 'left') {
+            icon.textContent = '‹';
+            toggleBtn.title = '숨기기';
+        } else {
+            icon.textContent = '›';
+            toggleBtn.title = '숨기기';
+        }
+        
+        // 로컬 스토리지에서 상태 제거
+        localStorage.removeItem(side + 'PanelHidden');
+        
+        // 중간 패널 크기 조정
+        adjustCenterPanel();
+    }
+}
+
+function adjustCenterPanel() {
+    const leftPanel = document.getElementById('leftPanel');
+    const rightPanel = document.getElementById('rightPanel');
+    const centerPanel = document.getElementById('centerPanel');
+    
+    if (!leftPanel || !rightPanel || !centerPanel) return;
+    
+    const leftHidden = leftPanel.classList.contains('panel-hidden');
+    const rightHidden = rightPanel.classList.contains('panel-hidden');
+    
+    if (leftHidden && rightHidden) {
+        centerPanel.style.width = '100%';
+    } else if (leftHidden || rightHidden) {
+        centerPanel.style.width = '75%';
+    } else {
+        centerPanel.style.width = '50%';
+    }
+}
+
+// 채팅 관련 함수들
+let isLoading = false;
+
+function handleKeyPress(event) {
+    if (event.key === 'Enter' && !isLoading) {
+        sendMessage();
+    }
+}
+
+function sendMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const message = chatInput.value.trim();
+    
+    if (!message || isLoading) {
+        return;
+    }
+    
+    // 선택된 문서들 가져오기
+    const selectedDocuments = getSelectedDocuments();
+    
+    // 입력 필드 비우기
+    chatInput.value = '';
+    
+    // 사용자 메시지 추가
+    addMessageToChat(message, 'user');
+    
+    // 로딩 상태 설정
+    isLoading = true;
+    updateSendButton(true);
+    
+    // 로딩 애니메이션 추가
+    addLoadingMessage();
+    
+    // API 호출 (RAG 지원)
+    const requestBody = {
+        message: message
+    };
+    
+    // 선택된 문서가 있으면 RAG 모드로 전송
+    if (selectedDocuments.length > 0) {
+        requestBody.selected_documents = selectedDocuments;
+    }
+    
+    fetch('/api/send-chat-message/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => response.json())
+    .then(data => {
+        // 로딩 메시지 제거
+        removeLoadingMessage();
+        
+        if (data.success) {
+            // AI 응답 추가
+            addMessageToChat(data.message, 'ai');
+            
+            // RAG 모드인 경우 참조 청크들 표시
+            if (data.referenced_chunks && data.referenced_chunks.length > 0) {
+                displayReferencedChunks(data.referenced_chunks);
+            }
+        } else {
+            // 오류 메시지 표시
+            addMessageToChat('오류: ' + data.message, 'ai', true);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        // 로딩 메시지 제거
+        removeLoadingMessage();
+        addMessageToChat('서버 오류가 발생했습니다.', 'ai', true);
+    })
+    .finally(() => {
+        isLoading = false;
+        updateSendButton(false);
+        chatInput.focus();
+    });
+}
+
+function addMessageToChat(content, sender, isError = false) {
+    const chatMessages = document.querySelector('.chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${sender}-message`;
+    
+    if (isError) {
+        messageDiv.style.color = '#ff6b6b';
+    }
+    
+    if (sender === 'user') {
+        messageDiv.innerHTML = `
+            <div class="message-content">${escapeHtml(content)}</div>
+            <div class="message-avatar">👤</div>
+        `;
+    } else {
+        messageDiv.innerHTML = `
+            <div class="message-avatar">🤖</div>
+            <div class="message-content">${escapeHtml(content)}</div>
+        `;
+    }
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addLoadingMessage() {
+    const chatMessages = document.querySelector('.chat-messages');
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message ai-message';
+    loadingDiv.id = 'loading-message';
+    
+    loadingDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="loading-message">
+            <span>AI가 답변을 준비하고 있습니다</span>
+            <div class="typing-indicator">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(loadingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeLoadingMessage() {
+    const loadingMessage = document.getElementById('loading-message');
+    if (loadingMessage) {
+        loadingMessage.remove();
+    }
+}
+
+function updateSendButton(loading) {
+    const sendBtn = document.querySelector('.send-btn');
+    if (loading) {
+        sendBtn.textContent = '전송중...';
+        sendBtn.disabled = true;
+    } else {
+        sendBtn.textContent = '전송';
+        sendBtn.disabled = false;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 페이지 로드 시 채팅 이력 불러오기
+document.addEventListener('DOMContentLoaded', function() {
+    loadChatHistory();
+    loadCurrentLLM();
+    loadDocumentList();
+});
+
+function uploadFiles() {
+    const fileInput = document.getElementById('fileInput');
+    const files = fileInput.files;
+    
+    if (files.length === 0) {
+        alert('파일을 선택해주세요.');
+        return;
+    }
+    
+    // 파일 크기 체크 (10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    for (let file of files) {
+        if (file.size > maxSize) {
+            alert(`파일 "${file.name}"의 크기가 10MB를 초과합니다.`);
+            return;
+        }
+    }
+    
+    // FormData 생성
+    const formData = new FormData();
+    for (let file of files) {
+        formData.append('file', file);
+    }
+    
+    // 업로드 진행 표시
+    showUploadProgress();
+    
+    // 파일 업로드
+    fetch('/api/upload-document/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideUploadProgress();
+        
+        if (data.success) {
+            alert(data.message);
+            // 파일 목록 새로고침
+            loadDocumentList();
+            // 파일 입력 초기화
+            fileInput.value = '';
+        } else {
+            alert('오류: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        hideUploadProgress();
+        alert('파일 업로드 중 오류가 발생했습니다.');
+    });
+}
+
+function showUploadProgress() {
+    const uploadBtn = document.querySelector('.upload-btn');
+    uploadBtn.innerHTML = '<span class="upload-icon">⏳</span>';
+    uploadBtn.disabled = true;
+}
+
+function hideUploadProgress() {
+    const uploadBtn = document.querySelector('.upload-btn');
+    uploadBtn.innerHTML = '<span class="upload-icon">↑</span>';
+    uploadBtn.disabled = false;
+}
+
+function loadDocumentList() {
+    fetch('/api/get-user-documents/')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateDocumentList(data.documents);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading documents:', error);
+    });
+}
+
+function updateDocumentList(documents) {
+    const fileListBody = document.getElementById('fileListBody');
+    
+    if (documents.length === 0) {
+        fileListBody.innerHTML = '<div class="no-files"><p>업로드된 문서가 없습니다.</p></div>';
+        // 전체 선택 체크박스 초기화
+        const selectAllCheckbox = document.querySelector('.select-all-checkbox');
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        return;
+    }
+    
+    fileListBody.innerHTML = '';
+    documents.forEach(doc => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.setAttribute('data-document-id', doc.id);
+        
+        fileItem.innerHTML = `
+            <div class="status-indicator active"></div>
+            <div class="file-name">${doc.filename}</div>
+            <input type="checkbox" class="file-checkbox" onchange="updateSelectAllCheckbox()">
+        `;
+        
+        fileListBody.appendChild(fileItem);
+    });
+    
+    // 전체 선택 체크박스 초기화
+    const selectAllCheckbox = document.querySelector('.select-all-checkbox');
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+}
+
+function logout() {
+    if (confirm('정말 로그아웃하시겠습니까?')) {
+        window.location.href = '/logout/';
+    }
+}
+
+function reloadFileList() {
+    loadDocumentList();
+}
+
+function toggleSelectAll(selectAllCheckbox) {
+    const fileCheckboxes = document.querySelectorAll('.file-checkbox');
+    fileCheckboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+}
+
+function updateSelectAllCheckbox() {
+    const fileCheckboxes = document.querySelectorAll('.file-checkbox');
+    const selectAllCheckbox = document.querySelector('.select-all-checkbox');
+    
+    const checkedCount = document.querySelectorAll('.file-checkbox:checked').length;
+    const totalCount = fileCheckboxes.length;
+    
+    if (checkedCount === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    } else if (checkedCount === totalCount) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+    } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+    }
+}
+
+function deleteSelectedDocuments() {
+    const selectedCheckboxes = document.querySelectorAll('.file-checkbox:checked');
+    
+    if (selectedCheckboxes.length === 0) {
+        alert('삭제할 문서를 선택해주세요.');
+        return;
+    }
+    
+    const documentIds = Array.from(selectedCheckboxes).map(checkbox => {
+        const fileItem = checkbox.closest('.file-item');
+        return fileItem.getAttribute('data-document-id');
+    });
+    
+    if (confirm(`선택한 ${documentIds.length}개의 문서를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+        // 삭제 진행 표시
+        showDeleteProgress();
+        
+        // 삭제 API 호출
+        fetch('/api/delete-documents/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                document_ids: documentIds
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideDeleteProgress();
+            
+            if (data.success) {
+                alert(data.message);
+                // 문서 목록 새로고침
+                loadDocumentList();
+                // 전체 선택 체크박스 초기화
+                const selectAllCheckbox = document.querySelector('.select-all-checkbox');
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                alert('오류: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            hideDeleteProgress();
+            alert('문서 삭제 중 오류가 발생했습니다.');
+        });
+    }
+}
+
+function showDeleteProgress() {
+    const deleteBtn = document.querySelector('.delete-btn');
+    deleteBtn.innerHTML = '<span class="icon">⏳</span>';
+    deleteBtn.disabled = true;
+}
+
+function hideDeleteProgress() {
+    const deleteBtn = document.querySelector('.delete-btn');
+    deleteBtn.innerHTML = '<span class="icon">🗑</span>';
+    deleteBtn.disabled = false;
+}
+
+function loadChatHistory() {
+    fetch('/api/get-chat-history/')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.messages.length > 0) {
+            const chatMessages = document.querySelector('.chat-messages');
+            chatMessages.innerHTML = ''; // 기존 메시지 제거
+            
+            // 메시지를 시간순으로 정렬 (오래된 것부터)
+            data.messages.reverse().forEach(message => {
+                addMessageToChat(message.req_content, 'user');
+                addMessageToChat(message.res_content, 'ai');
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error loading chat history:', error);
+    });
+}
+
+function loadCurrentLLM() {
+    fetch('/api/get-current-llm/')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Current LLM:', data.model.name);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading current LLM:', error);
+    });
+}
+</script>
 
 <!-- 설정 모달 -->
 <div id="settingsModal" class="modal">
@@ -186,8 +693,6 @@
         </div>
     </div>
 </div>
-
-{% endblock %}
 
 {% block extra_js %}
 <script>
@@ -393,14 +898,7 @@ function updateSendButton(isLoading) {
 // 파일 업로드 관련 함수들
 let selectedFiles = [];
 
-let isUploading = false; // 업로드 중복 방지 변수
-
 function uploadFiles() {
-    // 이미 업로드 중이면 무시
-    if (isUploading) {
-        return;
-    }
-    
     const fileInput = document.getElementById('fileInput');
     const files = fileInput.files;
     
@@ -417,9 +915,6 @@ function uploadFiles() {
             return;
         }
     }
-    
-    // 업로드 상태 설정
-    isUploading = true;
     
     // 파일 업로드
     const formData = new FormData();
@@ -442,7 +937,7 @@ function uploadFiles() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('파일이 성공적으로 업로드되었습니다. RAG 처리를 시작합니다.');
+            alert('파일이 성공적으로 업로드되었습니다.');
             // 파일 목록 새로고침
             location.reload();
         } else {
@@ -454,8 +949,6 @@ function uploadFiles() {
         alert('업로드 중 오류가 발생했습니다.');
     })
     .finally(() => {
-        // 업로드 상태 해제
-        isUploading = false;
         // 업로드 버튼 복원
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = '<span class="upload-icon">↑</span>';
@@ -627,7 +1120,42 @@ function getCookie(name) {
     return cookieValue;
 }
 
+// 페이지 로드 시 패널 상태 복원
+document.addEventListener('DOMContentLoaded', function() {
+    // 로컬 스토리지에서 패널 상태 복원
+    const leftHidden = localStorage.getItem('leftPanelHidden') === 'true';
+    const rightHidden = localStorage.getItem('rightPanelHidden') === 'true';
+    
+    if (leftHidden) {
+        document.getElementById('leftPanel').classList.add('panel-hidden');
+        document.getElementById('leftToggleBtn').innerHTML = '<span class="icon">›</span>';
+        document.getElementById('leftToggleBtn').title = '보이기';
+    }
+    
+    if (rightHidden) {
+        document.getElementById('rightPanel').classList.add('panel-hidden');
+        document.getElementById('rightToggleBtn').innerHTML = '<span class="icon">‹</span>';
+        document.getElementById('rightToggleBtn').title = '보이기';
+    }
+    
+    // 중간 패널 크기 조정
+    adjustCenterPanel();
+    
+    // RAG 관련 초기화
+    updateDocumentProcessingStatus();
+    
+    // 5초마다 처리 상태 확인 (처리 중인 문서가 있는 경우)
+    setInterval(() => {
+        const processingItems = document.querySelectorAll('.status-indicator.processing');
+        if (processingItems.length > 0) {
+            updateDocumentProcessingStatus();
+        }
+    }, 5000);
+});
+
 // RAG 관련 함수들
+
+// 선택된 문서들 가져오기
 function getSelectedDocuments() {
     const checkboxes = document.querySelectorAll('.file-checkbox:checked');
     return Array.from(checkboxes).map(checkbox => {
@@ -636,6 +1164,7 @@ function getSelectedDocuments() {
     });
 }
 
+// 참조 청크들 표시
 function displayReferencedChunks(referencedChunks) {
     const evidenceList = document.querySelector('.evidence-list');
     if (!evidenceList) return;
@@ -667,6 +1196,7 @@ function displayReferencedChunks(referencedChunks) {
     });
 }
 
+// 문서 처리 상태 업데이트
 function updateDocumentProcessingStatus() {
     const fileItems = document.querySelectorAll('.file-item');
     
@@ -688,6 +1218,7 @@ function updateDocumentProcessingStatus() {
     });
 }
 
+// 상태 표시기 업데이트
 function updateStatusIndicator(indicator, status, isProcessed) {
     // 기존 클래스 제거
     indicator.className = 'status-indicator';
@@ -712,6 +1243,7 @@ function updateStatusIndicator(indicator, status, isProcessed) {
     }
 }
 
+// 문서 RAG 처리 시작
 function processDocumentForRAG(documentId) {
     const statusIndicator = document.querySelector(`[data-document-id="${documentId}"] .status-indicator`);
     if (statusIndicator) {
@@ -747,6 +1279,7 @@ function processDocumentForRAG(documentId) {
     });
 }
 
+// 알림 표시 함수
 function showNotification(message, type = 'info') {
     // 기존 알림 제거
     const existingNotification = document.querySelector('.notification');
@@ -801,28 +1334,8 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
-// 페이지 로드 시 패널 상태 복원
+// 페이지 로드 시 처리 상태 업데이트
 document.addEventListener('DOMContentLoaded', function() {
-    // 로컬 스토리지에서 패널 상태 복원
-    const leftHidden = localStorage.getItem('leftPanelHidden') === 'true';
-    const rightHidden = localStorage.getItem('rightPanelHidden') === 'true';
-    
-    if (leftHidden) {
-        document.getElementById('leftPanel').classList.add('panel-hidden');
-        document.getElementById('leftToggleBtn').innerHTML = '<span class="icon">›</span>';
-        document.getElementById('leftToggleBtn').title = '보이기';
-    }
-    
-    if (rightHidden) {
-        document.getElementById('rightPanel').classList.add('panel-hidden');
-        document.getElementById('rightToggleBtn').innerHTML = '<span class="icon">‹</span>';
-        document.getElementById('rightToggleBtn').title = '보이기';
-    }
-    
-    // 중간 패널 크기 조정
-    adjustCenterPanel();
-    
-    // RAG 관련 초기화
     updateDocumentProcessingStatus();
     
     // 5초마다 처리 상태 확인 (처리 중인 문서가 있는 경우)

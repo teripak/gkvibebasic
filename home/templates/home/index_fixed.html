@@ -55,9 +55,8 @@
                 <div class="list-body" id="fileListBody">
                     {% for document in user_documents %}
                     <div class="file-item" data-document-id="{{ document.id }}">
-                        <div class="status-indicator {% if document.is_processed %}processed{% elif document.processing_status == 'processing' %}processing{% elif document.processing_status == 'failed' %}failed{% else %}pending{% endif %}" 
-                             title="{% if document.is_processed %}처리 완료{% elif document.processing_status == 'processing' %}처리 중...{% elif document.processing_status == 'failed' %}처리 실패{% else %}처리 대기{% endif %}"></div>
-                        <div class="file-name">{{ document.filename }}</div>
+                        <div class="status-indicator active"></div>
+                        <div class="file-name">{{ document.file.name|slice:"Document/"|slice:":-1"|slice:"/"|last }}</div>
                         <input type="checkbox" class="file-checkbox" onchange="updateSelectAllCheckbox()">
                     </div>
                     {% empty %}
@@ -393,14 +392,7 @@ function updateSendButton(isLoading) {
 // 파일 업로드 관련 함수들
 let selectedFiles = [];
 
-let isUploading = false; // 업로드 중복 방지 변수
-
 function uploadFiles() {
-    // 이미 업로드 중이면 무시
-    if (isUploading) {
-        return;
-    }
-    
     const fileInput = document.getElementById('fileInput');
     const files = fileInput.files;
     
@@ -417,9 +409,6 @@ function uploadFiles() {
             return;
         }
     }
-    
-    // 업로드 상태 설정
-    isUploading = true;
     
     // 파일 업로드
     const formData = new FormData();
@@ -442,7 +431,7 @@ function uploadFiles() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('파일이 성공적으로 업로드되었습니다. RAG 처리를 시작합니다.');
+            alert('파일이 성공적으로 업로드되었습니다.');
             // 파일 목록 새로고침
             location.reload();
         } else {
@@ -454,8 +443,6 @@ function uploadFiles() {
         alert('업로드 중 오류가 발생했습니다.');
     })
     .finally(() => {
-        // 업로드 상태 해제
-        isUploading = false;
         // 업로드 버튼 복원
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = '<span class="upload-icon">↑</span>';

@@ -2,14 +2,14 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils.safestring import mark_safe
-from .models import Document, LLMList, UserSetting, ChatMessage
+from .models import Document, LLMList, UserSetting, ChatMessage, DocumentChunk, DocumentSelection
 
 # Register your models here.
 
 @admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'file_name', 'file_size', 'created_at', 'updated_at']
-    list_filter = ['created_at', 'updated_at', 'user']
+    list_display = ['id', 'user', 'file_name', 'file_size', 'is_processed', 'processing_status', 'total_chunks', 'created_at']
+    list_filter = ['created_at', 'updated_at', 'user', 'is_processed', 'processing_status']
     search_fields = ['user__username', 'file', 'prompt_text']
     ordering = ['-created_at']
     readonly_fields = ['created_at', 'updated_at', 'file_size_display']
@@ -19,6 +19,9 @@ class DocumentAdmin(admin.ModelAdmin):
         }),
         ('프롬프트', {
             'fields': ('prompt_text',)
+        }),
+        ('RAG 처리 상태', {
+            'fields': ('is_processed', 'processing_status', 'total_chunks')
         }),
         ('시간 정보', {
             'fields': ('created_at', 'updated_at'),
@@ -190,3 +193,67 @@ class ChatMessageAdmin(admin.ModelAdmin):
             return obj.res_content[:50] + '...'
         return obj.res_content
     res_content_preview.short_description = '응답 내용'
+
+
+@admin.register(DocumentChunk)
+class DocumentChunkAdmin(admin.ModelAdmin):
+    list_display = ['id', 'document', 'chunk_index', 'content_preview', 'has_embedding', 'created_at']
+    list_filter = ['created_at', 'document__user', 'document']
+    search_fields = ['document__file', 'content', 'document__user__username']
+    ordering = ['document', 'chunk_index']
+    readonly_fields = ['created_at']
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('document', 'chunk_index', 'content')
+        }),
+        ('메타데이터', {
+            'fields': ('metadata',),
+            'classes': ('collapse',)
+        }),
+        ('임베딩', {
+            'fields': ('embedding',),
+            'classes': ('collapse',)
+        }),
+        ('시간 정보', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def content_preview(self, obj):
+        """내용 미리보기"""
+        if len(obj.content) > 100:
+            return obj.content[:100] + '...'
+        return obj.content
+    content_preview.short_description = '내용'
+    
+    def has_embedding(self, obj):
+        """임베딩 존재 여부"""
+        return bool(obj.embedding)
+    has_embedding.boolean = True
+    has_embedding.short_description = '임베딩'
+
+
+@admin.register(DocumentSelection)
+class DocumentSelectionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'session_id', 'documents_count', 'created_at', 'updated_at']
+    list_filter = ['created_at', 'updated_at', 'user']
+    search_fields = ['user__username', 'session_id']
+    ordering = ['-updated_at']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('user', 'session_id', 'selected_documents')
+        }),
+        ('시간 정보', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def documents_count(self, obj):
+        """선택된 문서 수"""
+        return obj.selected_documents.count()
+    documents_count.short_description = '선택된 문서 수'

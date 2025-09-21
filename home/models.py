@@ -49,6 +49,10 @@ class Document(models.Model):
     selected_llm = models.ForeignKey(LLMList, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='선택된 LLM 모델')
     chunk_size = models.IntegerField(default=1000, verbose_name='청크 글자수')
     chunk_overlap = models.IntegerField(default=200, verbose_name='청크 겹침 글자수')
+    # RAG 관련 필드들
+    is_processed = models.BooleanField(default=False, verbose_name='처리 완료 여부')
+    processing_status = models.CharField(max_length=50, default='pending', verbose_name='처리 상태')
+    total_chunks = models.IntegerField(default=0, verbose_name='총 청크 수')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일')
     
@@ -94,6 +98,10 @@ class ChatMessage(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='사용자')
     req_content = models.TextField(verbose_name='요청 내용')
     res_content = models.TextField(verbose_name='응답 내용')
+    # RAG 관련 필드들
+    selected_documents = models.ManyToManyField(Document, blank=True, verbose_name='선택된 문서들')
+    referenced_chunks = models.JSONField(default=list, blank=True, verbose_name='참조된 청크들')
+    search_scores = models.JSONField(default=dict, blank=True, verbose_name='검색 점수들')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일')
     
@@ -104,3 +112,39 @@ class ChatMessage(models.Model):
     
     def __str__(self):
         return f'{self.user.username} - {self.req_content[:50]}...'
+
+
+class DocumentChunk(models.Model):
+    """문서 청크를 저장하는 모델"""
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='chunks', verbose_name='문서')
+    chunk_index = models.IntegerField(verbose_name='청크 순서')
+    content = models.TextField(verbose_name='청크 내용')
+    metadata = models.JSONField(default=dict, verbose_name='메타데이터')
+    embedding = models.JSONField(null=True, blank=True, verbose_name='임베딩 벡터')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
+    
+    class Meta:
+        verbose_name = '문서 청크'
+        verbose_name_plural = '문서 청크들'
+        ordering = ['document', 'chunk_index']
+        unique_together = ['document', 'chunk_index']
+    
+    def __str__(self):
+        return f'{self.document.file.name} - 청크 {self.chunk_index}'
+
+
+class DocumentSelection(models.Model):
+    """사용자의 문서 선택을 관리하는 모델"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='사용자')
+    selected_documents = models.ManyToManyField(Document, related_name='selections', verbose_name='선택된 문서들')
+    session_id = models.CharField(max_length=100, verbose_name='세션 ID')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일')
+    
+    class Meta:
+        verbose_name = '문서 선택'
+        verbose_name_plural = '문서 선택들'
+        ordering = ['-updated_at']
+    
+    def __str__(self):
+        return f'{self.user.username} - 세션 {self.session_id}'
